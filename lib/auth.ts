@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import prisma from '@/services/db'
+import { hash, verify } from 'better-auth/crypto'
 
 const baseURL =
   process.env.BETTER_AUTH_URL ||
@@ -23,6 +24,12 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
+    async hashPassword(password: string) {
+      return await hash(password)
+    },
+    async verifyPassword(hashedPassword: string, password: string) {
+      return await verify(password, hashedPassword)
+    },
   },
 
   logger: {
