@@ -1,0 +1,130 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Student {
+  id       String         @id @default(cuid())
+  name     String
+  grade    String
+  color    String
+  userId   String
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions EtutSession[]
+
+  @@map("student")
+}
+
+model EtutSession {
+  id             String        @id @default(cuid())
+  studentId      String
+  student        Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  day            String
+  timeSlot       String
+  note           String?
+  createdAt      DateTime      @default(now())
+  weekOffset     Int
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  archivedWeekId String?
+  archivedWeek   ArchivedWeek? @relation(fields: [archivedWeekId], references: [id])
+
+  @@map("etut_session")
+}
+
+model User {
+  id            String         @id
+  name          String
+  email         String         @unique
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime
+  updatedAt     DateTime
+  sessions      Session[]
+  accounts      Account[]
+  students      Student[]
+  etutSessions  EtutSession[]
+  archivedWeeks ArchivedWeek[]
+  programDays   ProgramDay[]
+  timeSlots     TimeSlot[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime
+  updatedAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+
+  @@map("verification")
+}
+
+model ArchivedWeek {
+  id        String        @id @default(cuid())
+  weekRange String
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions  EtutSession[]
+
+  @@map("archived_week")
+}
+
+model ProgramDay {
+  id     String @id @default(cuid())
+  name   String // Pazartesi, Salı, vb.
+  order  Int    @default(0)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("program_day")
+}
+
+model TimeSlot {
+  id     String @id @default(cuid())
+  label  String // 08:20 - 10:00, vb.
+  order  Int    @default(0)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("time_slot")
+}

@@ -1,0 +1,382 @@
+'use client'
+
+import React, { useState, useMemo, useRef } from 'react'
+import { Users, Plus, Trash2, FileSpreadsheet, Search } from 'lucide-react'
+import * as XLSX from 'xlsx'
+import { toast } from 'react-hot-toast'
+import { STUDENT_COLORS, DAYS_OF_WEEK } from '../../constants'
+import { Modal } from '@/components/Modal'
+import { useEtut } from '@/context/EtutContext'
+import {  Session } from '../../types'
+import { Calendar, Clock, BookOpen, ChevronRight } from 'lucide-react'
+
+// --- Helpers ---
+const getMonday = (date: Date) => {
+  const d = new Date(date)
+  const day = d.getDay()
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1)
+  return new Date(d.setDate(diff))
+}
+
+const formatDate = (date: Date) => {
+  return date.toLocaleDateString('tr-TR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+}
+
+export default function StudentsPage() {
+  const {
+    students,
+    deleteStudent,
+    allSessions,
+  
+    addStudent: addStudentToDb,
+    addManyStudents,
+  } = useEtut()
+  const [showAddStudent, setShowAddStudent] = useState(false)
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(
+    null,
+  )
+  const [searchQuery, setSearchQuery] = useState('')
+  const [newStudentName, setNewStudentName] = useState('')
+  const [newStudentGrade, setNewStudentGrade] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const selectedStudent = useMemo(() => {
+    return students.find((s) => s.id === selectedStudentId)
+  }, [students, selectedStudentId])
+
+  const studentSessionsInProgress = useMemo(() => {
+    if (!selectedStudentId) return []
+    return allSessions
+      .filter((s) => s.studentId === selectedStudentId)
+      .sort((a, b) => b.weekOffset - a.weekOffset || b.createdAt - a.createdAt)
+  }, [allSessions, selectedStudentId])
+
+ const getSessionDate = (session: Session) => {
+   const monday = new Date()
+   monday.setDate(monday.getDate() + session.weekOffset * 7)
+
+   const currentMonday = getMonday(monday)
+   const dayIndex = DAYS_OF_WEEK.indexOf(session.day)
+
+   const sessionDate = new Date(currentMonday)
+   sessionDate.setDate(sessionDate.getDate() + dayIndex)
+
+   return formatDate(sessionDate)
+ }
+
+
+  const studentStats = useMemo(() => {
+    const stats: Record<string, number> = {}
+    // Calculate TOTAL sessions for each student, not just current week
+    allSessions.forEach((s) => {
+      stats[s.studentId] = (stats[s.studentId] || 0) + 1
+    })
+    return stats
+  }, [allSessions])
+
+  const filteredStudents = useMemo(() => {
+    if (!searchQuery.trim()) return students
+    const query = searchQuery.toLowerCase()
+    return students.filter(
+      (s) =>
+        s.name.toLowerCase().includes(query) ||
+        s.grade.toLowerCase().includes(query),
+    )
+  }, [students, searchQuery])
+
+  const addStudent = async () => {
+    if (!newStudentName) return
+    await addStudentToDb(newStudentName, newStudentGrade)
+    setNewStudentName('')
+    setNewStudentGrade('')
+    setShowAddStudent(false)
+  }
+
+  const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result
+        const wb = XLSX.read(bstr, { type: 'binary' })
+        const wsname = wb.SheetNames[0]
+        const data = XLSX.utils.sheet_to_json(wb.Sheets[wsname], {
+          header: 1,
+        }) as (string | number)[][]
+        const importedStudentsData = data
+          .slice(1)
+          .filter((row) => row[0])
+          .map((row, index) => ({
+            name: String(row[0]),
+            grade: row[1] ? String(row[1]) : 'Belirtilmedi',
+            color:
+              STUDENT_COLORS[(students.length + index) % STUDENT_COLORS.length],
+          }))
+
+        // ...x
+
+        if (importedStudentsData.length > 0) {
+          addManyStudents(importedStudentsData)
+        }
+      } catch (err) {
+        console.error('Dosya okuma hatası:', err)
+        toast.error('Dosya okunurken bir hata oluştu.')
+      }
+    }
+    reader.readAsBinaryString(file)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  return (
+    <div className="space-y-6">
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleExcelImport}
+        accept=".xlsx, .xls, .csv"
+        className="hidden"
+      />
+
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h2 className="text-2xl font-black text-gray-800 flex items-center">
+          <Users className="w-8 h-8 mr-3 text-indigo-600" /> Öğrenci Portföyü
+        </h2>
+        <div className="flex items-center space-x-3 w-full sm:w-auto">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-1 sm:flex-none bg-emerald-50 text-emerald-700 border-2 border-emerald-100 px-5 py-3 rounded-2xl flex items-center justify-center space-x-2 hover:bg-emerald-100 transition-all font-black text-sm"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Excel&apos;den Aktar</span>
+          </button>
+          <button
+            onClick={() => setShowAddStudent(true)}
+            className="flex-1 sm:flex-none bg-indigo-600 text-white px-6 py-3 rounded-2xl flex items-center justify-center space-x-2 hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 font-black text-sm active:scale-95"
+          >
+            <Plus className="w-5 h-5" />
+            <span>Yeni Öğrenci</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="relative group">
+        <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Öğrenci adı veya sınıfı ile ara..."
+          className="w-full pl-14 pr-6 py-5 bg-white border-2 border-transparent rounded-[1.5rem] shadow-sm focus:border-indigo-500 focus:ring-8 focus:ring-indigo-500/5 focus:outline-none transition-all font-bold text-gray-700 placeholder:text-gray-300"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {students.length === 0 ? (
+          <div className="col-span-full py-32 text-center bg-white rounded-[2rem] border-4 border-dashed border-gray-100 flex flex-col items-center">
+            <div className="bg-indigo-50 p-8 rounded-full mb-6">
+              <Users className="w-16 h-16 text-indigo-300" />
+            </div>
+            <h3 className="text-xl font-black text-gray-800">
+              Öğrenci Listeniz Boş
+            </h3>
+            <p className="text-gray-400 font-medium mt-2">
+              Hemen sağ üstteki butondan ilk öğrencinizi ekleyin.
+            </p>
+          </div>
+        ) : filteredStudents.length === 0 ? (
+          <div className="col-span-full py-24 text-center bg-white rounded-[2rem] border-2 border-dashed border-gray-100 flex flex-col items-center">
+            <div className="bg-gray-50 p-6 rounded-full mb-4">
+              <Search className="w-10 h-10 text-gray-300" />
+            </div>
+            <h3 className="text-lg font-black text-gray-800">
+              Sonuç Bulunamadı
+            </h3>
+            <p className="text-gray-400 font-medium mt-1">
+              &quot;{searchQuery}&quot; kriterine uygun öğrenci bulunamadı.
+            </p>
+            <button
+              onClick={() => setSearchQuery('')}
+              className="mt-4 text-indigo-600 font-black text-sm hover:underline"
+            >
+              Aramayı Temizle
+            </button>
+          </div>
+        ) : (
+          filteredStudents.map((student) => (
+            <div
+              key={student.id}
+              onClick={() => setSelectedStudentId(student.id)}
+              className="bg-white rounded-[1.5rem] border border-gray-100 p-6 shadow-sm hover:shadow-2xl transition-all relative group overflow-hidden hover:-translate-y-1 cursor-pointer"
+            >
+              <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    deleteStudent(student.id)
+                  }}
+                  className="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="flex items-center space-x-5">
+                <div
+                  className={`w-16 h-16 rounded-[1.25rem] flex items-center justify-center font-black text-2xl shrink-0 shadow-inner group-hover:rotate-3 transition-transform ${student.color}`}
+                >
+                  {student.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="overflow-hidden">
+                  <h3 className="font-black text-gray-900 truncate text-xl leading-tight">
+                    {student.name}
+                  </h3>
+                  <div className="flex items-center space-x-3 mt-2">
+                    <span className="text-[10px] font-black text-gray-400 bg-gray-100 px-3 py-1 rounded-lg uppercase tracking-widest">
+                      {student.grade}
+                    </span>
+                    <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg">
+                      {studentStats[student.id] || 0} Etüt
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {selectedStudent && (
+        <Modal
+          title="Öğrenci Detayları"
+          onClose={() => setSelectedStudentId(null)}
+        >
+          <div className="space-y-8">
+            <div className="flex items-center space-x-6 bg-indigo-50/50 p-6 rounded-[2.5rem] border border-indigo-100">
+              <div
+                className={`w-20 h-20 rounded-3xl flex items-center justify-center font-black text-3xl shadow-xl ${selectedStudent.color}`}
+              >
+                {selectedStudent.name.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <h3 className="text-2xl font-black text-gray-900">
+                  {selectedStudent.name}
+                </h3>
+                <div className="flex items-center space-x-2 mt-1">
+                  <span className="px-3 py-1 bg-white border border-indigo-100 rounded-lg text-[10px] font-black text-indigo-600 uppercase tracking-widest">
+                    {selectedStudent.grade}
+                  </span>
+                  <span className="px-3 py-1 bg-indigo-600 rounded-lg text-[10px] font-black text-white uppercase tracking-widest">
+                    Toplam {studentSessionsInProgress.length} Etüt
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h4 className="flex items-center text-xs font-black text-gray-400 uppercase tracking-[0.2em] ml-2">
+                <Calendar className="w-4 h-4 mr-2 text-indigo-400" /> Etüt
+                Geçmişi
+              </h4>
+
+              {studentSessionsInProgress.length === 0 ? (
+                <div className="p-12 text-center bg-gray-50 rounded-[2rem] border-2 border-dashed border-gray-200">
+                  <p className="text-gray-400 font-bold">
+                    Henüz etüt kaydı bulunmuyor.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar">
+                  {studentSessionsInProgress.map((session) => (
+                    <div
+                      key={session.id}
+                      className="group flex items-center justify-between p-5 bg-white border border-gray-100 rounded-2xl hover:border-indigo-200 hover:shadow-lg transition-all"
+                    >
+                      <div className="flex items-center space-x-4">
+                        <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition-all">
+                          <Clock className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="font-black text-gray-900">
+                            {getSessionDate(session)}
+                          </p>
+                          <p className="text-xs font-bold text-gray-400 flex items-center mt-1">
+                            <span className="text-indigo-600 mr-2">
+                              {session.day}
+                            </span>
+                            {session.timeSlot}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        {session.note && (
+                          <div
+                            title={session.note}
+                            className="p-2 text-gray-300 hover:text-indigo-400 cursor-help transition-colors"
+                          >
+                            <BookOpen className="w-4 h-4" />
+                          </div>
+                        )}
+                        <ChevronRight className="w-5 h-5 text-gray-200" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setSelectedStudentId(null)}
+              className="w-full bg-indigo-600 text-white py-5 rounded-[1.5rem] font-black text-xl shadow-2xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-[0.98]"
+            >
+              Kapat
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {showAddStudent && (
+        <Modal
+          title="Öğrenci Kayıt Formu"
+          onClose={() => setShowAddStudent(false)}
+        >
+          <div className="space-y-6">
+            <div>
+              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-3">
+                Tam Ad Soyad
+              </label>
+              <input
+                type="text"
+                value={newStudentName}
+                onChange={(e) => setNewStudentName(e.target.value)}
+                placeholder="Örn: Mert Karakuş"
+                className="w-full px-5 py-4 border-2 border-gray-100 rounded-2xl focus:ring-8 focus:ring-indigo-500/5 focus:border-indigo-500 focus:outline-none transition-all font-bold"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-3">
+                Sınıf Bilgisi
+              </label>
+              <input
+                type="text"
+                value={newStudentGrade}
+                onChange={(e) => setNewStudentGrade(e.target.value)}
+                placeholder="Örn: 12-B LGS"
+                className="w-full px-5 py-4 border-2 border-gray-100 rounded-2xl focus:ring-8 focus:ring-indigo-500/5 focus:border-indigo-500 focus:outline-none transition-all font-bold"
+              />
+            </div>
+            <button
+              onClick={addStudent}
+              className="w-full bg-indigo-600 text-white py-5 rounded-[1.5rem] font-black text-xl shadow-2xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-[0.98]"
+            >
+              Öğrenciyi Kaydet
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  )
+}
