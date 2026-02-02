@@ -12,15 +12,17 @@ datasource db {
 ////////////////////////
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String?
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(cuid())
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  password      String?
+  name          String?
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  accounts  Account[]
-  sessions  Session[]
+  accounts Account[]
+  sessions Session[]
 
   students      Student[]
   etutSessions  EtutSession[]
@@ -32,11 +34,20 @@ model User {
 }
 
 model Account {
-  id                String @id @default(cuid())
+  id                String  @id @default(cuid())
   userId            String
+  type              String
   provider          String
   providerAccountId String
-  user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken      String?
+  accessToken       String?
+  expiresAt         Int?
+  tokenType         String?
+  scope             String?
+  idToken           String?
+  sessionState      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@map("account")
@@ -65,12 +76,12 @@ model VerificationToken {
 ////////////////////////
 
 model Student {
-  id       String         @id @default(cuid())
+  id       String        @id @default(cuid())
   name     String
   grade    String
   color    String
   userId   String
-  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   sessions EtutSession[]
 
   @@map("student")
