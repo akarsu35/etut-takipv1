@@ -7,6 +7,63 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+////////////////////////
+// AUTH MODELLERİ
+////////////////////////
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String?
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts  Account[]
+  sessions  Session[]
+
+  students      Student[]
+  etutSessions  EtutSession[]
+  archivedWeeks ArchivedWeek[]
+  programDays   ProgramDay[]
+  timeSlots     TimeSlot[]
+
+  @@map("user")
+}
+
+model Account {
+  id                String @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("account")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification")
+}
+
+////////////////////////
+// DOMAIN MODELLERİ
+////////////////////////
+
 model Student {
   id       String         @id @default(cuid())
   name     String
@@ -36,57 +93,6 @@ model EtutSession {
   @@map("etut_session")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String?
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  accounts  Account[]
-  sessions  Session[]
-
-  students      Student[]
-  etutSessions  EtutSession[]
-  archivedWeeks ArchivedWeek[]
-  programDays   ProgramDay[]
-  timeSlots     TimeSlot[]
-
-  @@map("user")
-}
-
-
-model Session {
-  id        String   @id @default(cuid())
-  userId    String
-  expiresAt DateTime
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("session")
-}
-
-model Account {
-  id                String @id @default(cuid())
-  userId            String
-  provider          String
-  providerAccountId String
-  user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-  @@map("account")
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
-  @@map("verification")
-}
-
-
 model ArchivedWeek {
   id        String        @id @default(cuid())
   weekRange String
@@ -99,7 +105,7 @@ model ArchivedWeek {
 
 model ProgramDay {
   id     String @id @default(cuid())
-  name   String // Pazartesi, Salı, vb.
+  name   String
   order  Int    @default(0)
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -109,7 +115,7 @@ model ProgramDay {
 
 model TimeSlot {
   id     String @id @default(cuid())
-  label  String // 08:20 - 10:00, vb.
+  label  String
   order  Int    @default(0)
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
