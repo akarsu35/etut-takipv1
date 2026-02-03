@@ -48,6 +48,15 @@ export const auth = betterAuth({
     enabled: true,
   },
 
+  // Map Better Auth account fields to current Prisma schema.
+  // This makes credential passwords stored in `account.password`.
+  account: {
+    fields: {
+      providerId: 'provider',
+      accountId: 'providerId',
+    },
+  },
+
   logger: {
     disabled: false,
     level: 'debug',
