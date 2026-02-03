@@ -1,7 +1,7 @@
 import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import prisma from '@/services/db'
-import { hash, verify } from 'better-auth/crypto'
+import { randomBytes, scryptSync, timingSafeEqual } from 'crypto'
 
 const baseURL =
   process.env.BETTER_AUTH_URL ||
@@ -25,10 +25,21 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     async hashPassword(password: string) {
-      return await hash(password)
+      // scrypt with 64 byte key, store salt:hash
+      const salt = randomBytes(16).toString('hex')
+      const derived = scryptSync(password, salt, 64) as Buffer
+      return `${salt}:${derived.toString('hex')}`
     },
     async verifyPassword(hashedPassword: string, password: string) {
-      return await verify(password, hashedPassword)
+      const [salt, key] = hashedPassword.split(':')
+      if (!salt || !key) return false
+      const derived = scryptSync(password, salt, 64) as Buffer
+      const keyBuf = Buffer.from(key, 'hex')
+      try {
+        return timingSafeEqual(derived, keyBuf)
+      } catch {
+        return false
+      }
     },
   },
 
