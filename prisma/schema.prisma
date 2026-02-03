@@ -34,26 +34,23 @@ model User {
 }
 
 model Account {
-  id                String   @id @default(cuid())
-  userId            String
-  type              String   @default("credential")
-  provider          String
-  providerId        String
-  providerAccountId String   @default("")
-  refreshToken      String?
-  accessToken       String?
-  expiresAt         Int?
-  tokenType         String?
-  scope             String?
-  idToken           String?
-  sessionState      String?
-  password          String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                    String    @id @default(cuid())
+  userId                String
+  providerId            String
+  accountId             String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([provider, providerId])
+  @@unique([providerId, accountId])
   @@map("account")
 }
 
@@ -61,6 +58,11 @@ model Session {
   id        String   @id @default(cuid())
   userId    String
   expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("session")

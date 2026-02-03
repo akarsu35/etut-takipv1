@@ -33,6 +33,7 @@ const baseURL =
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: 'postgresql',
+    debugLogs: true,
   }),
 
   baseURL,
@@ -46,15 +47,6 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
-  },
-
-  // Map Better Auth account fields to current Prisma schema.
-  // This makes credential passwords stored in `account.password`.
-  account: {
-    fields: {
-      providerId: 'provider',
-      accountId: 'providerAccountId',
-    },
   },
 
   logger: {
