@@ -53,7 +53,7 @@ export const auth = betterAuth({
   account: {
     fields: {
       providerId: 'provider',
-      accountId: 'providerId',
+      accountId: 'providerAccountId',
     },
   },
 
