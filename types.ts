@@ -23,6 +23,7 @@ export interface Session {
   note?: string
   createdAt: number
   weekOffset: number // Hangi haftaya ait olduğunu takip eder
+  attended?: boolean | null // null=belirsiz, true=katıldı, false=katılmadı
 }
 
 export interface WeekStats {

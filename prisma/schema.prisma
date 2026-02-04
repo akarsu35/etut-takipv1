@@ -107,6 +107,7 @@ model EtutSession {
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   archivedWeekId String?
   archivedWeek   ArchivedWeek? @relation(fields: [archivedWeekId], references: [id])
+  attended       Boolean? // null=belirsiz, true=katıldı, false=katılmadı
 
   @@map("etut_session")
 }

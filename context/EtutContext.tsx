@@ -19,6 +19,7 @@ import {
   removeSessionAction,
   archiveWeekAction,
   deleteArchivedWeekAction,
+  updateSessionAttendanceAction,
 } from '@/actions/etutActions'
 import { seedDefaultsIfEmpty } from '@/actions/programActions'
 import { authClient } from '@/lib/auth-client'
@@ -60,6 +61,10 @@ interface EtutContextType {
     currentWeekSessions: Session[],
   ) => Promise<void>
   deleteArchivedWeek: (id: string) => Promise<void>
+  updateSessionAttendance: (
+    sessionId: string,
+    attended: boolean | null,
+  ) => Promise<void>
 }
 
 const EtutContext = createContext<EtutContextType | undefined>(undefined)
@@ -236,6 +241,30 @@ export const EtutProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }
 
+  const updateSessionAttendance = async (
+    sessionId: string,
+    attended: boolean | null,
+  ) => {
+    try {
+      const updated = await updateSessionAttendanceAction(sessionId, attended)
+      setAllSessions((prev) =>
+        prev.map((s) =>
+          s.id === sessionId ? { ...s, attended: updated.attended } : s,
+        ),
+      )
+      const statusText =
+        attended === true
+          ? 'Katıldı'
+          : attended === false
+            ? 'Gelmedi'
+            : 'Belirsiz'
+      toast.success(`Katılım durumu: ${statusText}`)
+    } catch (error) {
+      console.error(error)
+      toast.error('Katılım durumu güncellenemedi.')
+    }
+  }
+
   return (
     <EtutContext.Provider
       value={{
@@ -255,6 +284,7 @@ export const EtutProvider: React.FC<{ children: React.ReactNode }> = ({
         addManyStudents,
         archiveCurrentWeek,
         deleteArchivedWeek,
+        updateSessionAttendance,
         programDays,
         timeSlots,
         refreshProgram: fetchData,

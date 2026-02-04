@@ -174,3 +174,15 @@ export async function deleteArchivedWeekAction(id: string) {
     where: { id, userId },
   })
 }
+
+export async function updateSessionAttendanceAction(
+  sessionId: string,
+  attended: boolean | null,
+) {
+  const userId = await getUserId()
+  const updated = await prisma.etutSession.update({
+    where: { id: sessionId, userId },
+    data: { attended },
+  })
+  return JSON.parse(JSON.stringify(updated))
+}

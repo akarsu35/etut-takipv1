@@ -20,6 +20,8 @@ import {
   Zap,
   Search,
   ChevronDown,
+  UserCheck,
+  UserX,
 } from 'lucide-react'
 import { Day, Student, AiReport } from '../types'
 // DAYS_OF_WEEK ve TIME_SLOTS artık context'ten gelecek
@@ -55,6 +57,7 @@ export default function CalendarPage() {
     archiveCurrentWeek,
     programDays,
     timeSlots,
+    updateSessionAttendance,
   } = useEtut()
 
   // Drag State
@@ -133,6 +136,25 @@ export default function CalendarPage() {
       s.name.toLowerCase().includes(neglectedSearchQuery.toLowerCase()),
     )
   }, [neglectedFromLastWeek, neglectedSearchQuery])
+
+  // Group neglected students by grade (class) and sort alphabetically
+  const groupedByGrade = useMemo(() => {
+    const groups: Record<string, typeof filteredNeglectedStudents> = {}
+    filteredNeglectedStudents.forEach((s) => {
+      const grade = s.grade || 'Diğer'
+      if (!groups[grade]) groups[grade] = []
+      groups[grade].push(s)
+    })
+    // Sort students alphabetically within each group
+    Object.keys(groups).forEach((grade) => {
+      groups[grade].sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+    })
+    // Sort grades alphabetically
+    const sortedGrades = Object.keys(groups).sort((a, b) =>
+      a.localeCompare(b, 'tr'),
+    )
+    return sortedGrades.map((grade) => ({ grade, students: groups[grade] }))
+  }, [filteredNeglectedStudents])
 
   // Actions
   const addSelectedSessions = async () => {
@@ -333,39 +355,52 @@ export default function CalendarPage() {
                   </p>
                 </div>
 
-                {/* Students Grid */}
-                <div className="max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
+                {/* Students Grid - Grouped by Class */}
+                <div className="max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                   {filteredNeglectedStudents.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {filteredNeglectedStudents.map((s) => (
-                        <div
-                          key={s.id}
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, s.id)}
-                          onDragEnd={handleDragEnd}
-                          className="group relative bg-white border-2 border-rose-200 rounded-xl p-3 shadow-sm hover:shadow-lg hover:scale-[1.02] hover:border-rose-400 transition-all cursor-grab active:cursor-grabbing active:scale-95"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={`w-10 h-10 rounded-lg flex items-center justify-center font-black text-sm shadow-inner ${s.color || 'bg-rose-100 text-rose-600'} group-hover:scale-110 transition-transform`}
-                            >
-                              {s.name.charAt(0)}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {groupedByGrade.map(
+                        ({ grade, students: gradeStudents }) => (
+                          <div
+                            key={grade}
+                            className="bg-white/50 rounded-xl p-3 border border-rose-100"
+                          >
+                            {/* Class Header */}
+                            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-rose-200">
+                              <span className="bg-rose-600 text-white text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-wide">
+                                {grade}
+                              </span>
+                              <span className="text-[10px] font-bold text-rose-500">
+                                {gradeStudents.length} öğrenci
+                              </span>
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-black text-sm text-gray-900 truncate">
-                                {s.name}
-                              </p>
-                              <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-tight">
-                                {s.grade}
-                              </p>
+                            {/* Students List */}
+                            <div className="space-y-2">
+                              {gradeStudents.map((s) => (
+                                <div
+                                  key={s.id}
+                                  draggable
+                                  onDragStart={(e) => handleDragStart(e, s.id)}
+                                  onDragEnd={handleDragEnd}
+                                  className="group relative bg-white border border-rose-200 rounded-lg p-2.5 shadow-sm hover:shadow-md hover:scale-[1.02] hover:border-rose-400 transition-all cursor-grab active:cursor-grabbing active:scale-95"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <div
+                                      className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs shadow-inner ${s.color || 'bg-rose-100 text-rose-600'} group-hover:scale-110 transition-transform`}
+                                    >
+                                      {s.name.charAt(0)}
+                                    </div>
+                                    <p className="font-bold text-sm text-gray-900 truncate flex-1">
+                                      {s.name}
+                                    </p>
+                                    <GripVertical className="w-3.5 h-3.5 text-rose-300 group-hover:text-rose-500 transition-colors shrink-0" />
+                                  </div>
+                                </div>
+                              ))}
                             </div>
-                            <GripVertical className="w-4 h-4 text-rose-300 group-hover:text-rose-500 transition-colors shrink-0" />
                           </div>
-
-                          {/* Drag Indicator */}
-                          <div className="absolute inset-0 bg-gradient-to-r from-rose-500/0 via-rose-500/5 to-rose-500/0 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl pointer-events-none" />
-                        </div>
-                      ))}
+                        ),
+                      )}
                     </div>
                   ) : (
                     <div className="text-center py-8">
@@ -474,6 +509,37 @@ export default function CalendarPage() {
                                   </span>
                                 </div>
                               )}
+                              {/* Attendance Buttons */}
+                              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-black/5">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    updateSessionAttendance(sess.id, true)
+                                  }}
+                                  className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
+                                    sess.attended === true
+                                      ? 'bg-emerald-500 text-white shadow-sm'
+                                      : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+                                  }`}
+                                >
+                                  <UserCheck className="w-3 h-3" />
+                                  Katıldı
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    updateSessionAttendance(sess.id, false)
+                                  }}
+                                  className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
+                                    sess.attended === false
+                                      ? 'bg-rose-500 text-white shadow-sm'
+                                      : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
+                                  }`}
+                                >
+                                  <UserX className="w-3 h-3" />
+                                  Gelmedi
+                                </button>
+                              </div>
                             </div>
                           )
                         })}
