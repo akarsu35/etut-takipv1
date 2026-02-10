@@ -91,6 +91,25 @@ export default function CalendarPage() {
     )
   }, [students, modalSearchQuery])
 
+  // Group modal students by grade for better organization
+  const groupedStudentsForModal = useMemo(() => {
+    const groups: Record<string, typeof filteredStudentsForModal> = {}
+    filteredStudentsForModal.forEach((s) => {
+      const grade = s.grade || 'Diğer'
+      if (!groups[grade]) groups[grade] = []
+      groups[grade].push(s)
+    })
+    // Sort students alphabetically within each group
+    Object.keys(groups).forEach((grade) => {
+      groups[grade].sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+    })
+    // Sort grades alphabetically
+    const sortedGrades = Object.keys(groups).sort((a, b) =>
+      a.localeCompare(b, 'tr'),
+    )
+    return sortedGrades.map((grade) => ({ grade, students: groups[grade] }))
+  }, [filteredStudentsForModal])
+
   // Neglected students UI states
   const [isNeglectedExpanded, setIsNeglectedExpanded] = useState(false)
   const [neglectedSearchQuery, setNeglectedSearchQuery] = useState('')
@@ -612,63 +631,86 @@ export default function CalendarPage() {
                 </button>
               )}
             </div>
-            <div className="grid grid-cols-1 gap-3 max-h-[350px] overflow-y-auto pr-3 custom-scrollbar">
+            <div className="space-y-4 max-h-[350px] overflow-y-auto pr-3 custom-scrollbar">
               {filteredStudentsForModal.length === 0 ? (
                 <div className="text-center py-8 text-gray-400">
                   <p className="font-semibold">Öğrenci bulunamadı</p>
                 </div>
               ) : (
-                filteredStudentsForModal.map((student) => {
-                  const isSelected = selectedStudentIds.includes(student.id)
-                  const count = allSessions.filter(
-                    (s) =>
-                      s.studentId === student.id && s.weekOffset === weekOffset,
-                  ).length
-                  return (
-                    <button
-                      key={student.id}
-                      onClick={() => toggleStudentSelection(student.id)}
-                      className={`flex items-center space-x-4 p-4 border-2 rounded-[1.25rem] transition-all text-left group ${
-                        isSelected
-                          ? 'bg-indigo-50 border-indigo-500 shadow-lg translate-x-1'
-                          : 'bg-white border-gray-100 hover:border-indigo-200'
-                      }`}
-                    >
-                      <div
-                        className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg shadow-inner transition-all ${
-                          isSelected
-                            ? 'bg-indigo-600 text-white rotate-6'
-                            : student.color
-                        }`}
-                      >
-                        {isSelected ? (
-                          <Check className="w-6 h-6" />
-                        ) : (
-                          student.name.charAt(0)
-                        )}
+                groupedStudentsForModal.map(
+                  ({ grade, students: gradeStudents }) => (
+                    <div key={grade} className="space-y-3">
+                      {/* Grade Header */}
+                      <div className="flex items-center gap-2 px-2">
+                        <span className="bg-indigo-600 text-white text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-wide">
+                          {grade}
+                        </span>
+                        <span className="text-[10px] font-bold text-indigo-500">
+                          {gradeStudents.length} öğrenci
+                        </span>
+                        <div className="flex-1 h-px bg-gradient-to-r from-indigo-200 to-transparent"></div>
                       </div>
-                      <div className="flex-1 overflow-hidden">
-                        <p
-                          className={`font-black text-sm truncate ${isSelected ? 'text-indigo-900' : 'text-gray-900'}`}
-                        >
-                          {student.name}
-                        </p>
-                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tight">
-                          {student.grade}
-                        </p>
+
+                      {/* Students in this grade */}
+                      <div className="grid grid-cols-1 gap-3">
+                        {gradeStudents.map((student) => {
+                          const isSelected = selectedStudentIds.includes(
+                            student.id,
+                          )
+                          const count = allSessions.filter(
+                            (s) =>
+                              s.studentId === student.id &&
+                              s.weekOffset === weekOffset,
+                          ).length
+                          return (
+                            <button
+                              key={student.id}
+                              onClick={() => toggleStudentSelection(student.id)}
+                              className={`flex items-center space-x-4 p-4 border-2 rounded-[1.25rem] transition-all text-left group ${
+                                isSelected
+                                  ? 'bg-indigo-50 border-indigo-500 shadow-lg translate-x-1'
+                                  : 'bg-white border-gray-100 hover:border-indigo-200'
+                              }`}
+                            >
+                              <div
+                                className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg shadow-inner transition-all ${
+                                  isSelected
+                                    ? 'bg-indigo-600 text-white rotate-6'
+                                    : student.color
+                                }`}
+                              >
+                                {isSelected ? (
+                                  <Check className="w-6 h-6" />
+                                ) : (
+                                  student.name.charAt(0)
+                                )}
+                              </div>
+                              <div className="flex-1 overflow-hidden">
+                                <p
+                                  className={`font-black text-sm truncate ${isSelected ? 'text-indigo-900' : 'text-gray-900'}`}
+                                >
+                                  {student.name}
+                                </p>
+                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tight">
+                                  {student.grade}
+                                </p>
+                              </div>
+                              <div
+                                className={`px-3 py-1.5 rounded-xl text-[10px] font-black transition-colors shrink-0 ${
+                                  isSelected
+                                    ? 'bg-indigo-200 text-indigo-800'
+                                    : 'bg-gray-100 text-gray-500'
+                                }`}
+                              >
+                                {count} ETÜT
+                              </div>
+                            </button>
+                          )
+                        })}
                       </div>
-                      <div
-                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black transition-colors shrink-0 ${
-                          isSelected
-                            ? 'bg-indigo-200 text-indigo-800'
-                            : 'bg-gray-100 text-gray-500'
-                        }`}
-                      >
-                        {count} ETÜT
-                      </div>
-                    </button>
-                  )
-                })
+                    </div>
+                  ),
+                )
               )}
             </div>
             <button
