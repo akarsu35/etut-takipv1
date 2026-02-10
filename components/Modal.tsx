@@ -5,9 +5,15 @@ interface ModalProps {
   title: string
   onClose: () => void
   children: React.ReactNode
+  footer?: React.ReactNode
 }
 
-export const Modal: React.FC<ModalProps> = ({ title, onClose, children }) => (
+export const Modal: React.FC<ModalProps> = ({
+  title,
+  onClose,
+  children,
+  footer,
+}) => (
   <div
     className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 text-left cursor-pointer"
     onClick={onClose}
@@ -27,7 +33,12 @@ export const Modal: React.FC<ModalProps> = ({ title, onClose, children }) => (
           <X className="w-5 h-5 text-gray-500" />
         </button>
       </div>
-      <div className="p-6 overflow-y-auto custom-scrollbar">{children}</div>
+      <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+        {children}
+      </div>
+      {footer && (
+        <div className="px-6 py-4 border-t bg-gray-50 shrink-0">{footer}</div>
+      )}
     </div>
   </div>
 )

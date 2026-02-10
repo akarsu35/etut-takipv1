@@ -1,18 +1,37 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { authClient } from '@/lib/auth-client'
+import { useRouter } from 'next/navigation'
 
 import { Calendar, Mail, Lock, User, ArrowRight, Loader2 } from 'lucide-react'
 
 export default function LoginPage() {
+  const router = useRouter()
+  const { data: session, isPending } = authClient.useSession()
+
   const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
- 
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (!isPending && session?.user) {
+      window.location.href = '/'
+    }
+  }, [session, isPending])
+
+  // Show loading while checking session OR if already logged in (waiting for redirect)
+  if (isPending || session?.user) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+      </div>
+    )
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

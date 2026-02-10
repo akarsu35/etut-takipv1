@@ -114,6 +114,18 @@ export async function deleteStudentAction(id: string) {
   })
 }
 
+export async function updateStudentAction(
+  id: string,
+  data: { name: string; grade: string },
+) {
+  const userId = await getUserId()
+  const updated = await prisma.student.update({
+    where: { id, userId },
+    data: { name: data.name, grade: data.grade },
+  })
+  return JSON.parse(JSON.stringify(updated))
+}
+
 export async function addSessionsAction(sessionData: any[]) {
   const userId = await getUserId()
   const newSessions = await Promise.all(

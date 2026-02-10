@@ -15,6 +15,7 @@ import {
   addStudentAction,
   addManyStudentsAction,
   deleteStudentAction,
+  updateStudentAction,
   addSessionsAction,
   removeSessionAction,
   archiveWeekAction,
@@ -39,9 +40,9 @@ interface EtutContextType {
   refreshProgram: () => Promise<void>
   user: any
 
-  // Helpers
   addStudent: (name: string, grade: string) => Promise<void>
   deleteStudent: (id: string) => Promise<void>
+  updateStudent: (id: string, name: string, grade: string) => Promise<void>
   removeSession: (sessionId: string) => Promise<void>
   addSessions: (
     sessionData: {
@@ -178,6 +179,21 @@ export const EtutProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }
 
+  const updateStudent = async (id: string, name: string, grade: string) => {
+    try {
+      const updated = await updateStudentAction(id, { name, grade })
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.id === id ? { ...s, name: updated.name, grade: updated.grade } : s,
+        ),
+      )
+      toast.success('Öğrenci bilgileri güncellendi!')
+    } catch (error) {
+      console.error(error)
+      toast.error('Güncelleme başarısız.')
+    }
+  }
+
   const removeSession = async (sessionId: string) => {
     try {
       await removeSessionAction(sessionId)
@@ -279,6 +295,7 @@ export const EtutProvider: React.FC<{ children: React.ReactNode }> = ({
         loading: loading || sessionPending,
         addStudent,
         deleteStudent,
+        updateStudent,
         removeSession,
         addSessions,
         addManyStudents,

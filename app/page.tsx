@@ -78,6 +78,18 @@ export default function CalendarPage() {
   // Form states
   const [sessionNote, setSessionNote] = useState('')
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([])
+  const [modalSearchQuery, setModalSearchQuery] = useState('')
+
+  // Filtered students for modal search
+  const filteredStudentsForModal = useMemo(() => {
+    if (!modalSearchQuery.trim()) return students
+    const query = modalSearchQuery.toLowerCase()
+    return students.filter(
+      (s) =>
+        s.name.toLowerCase().includes(query) ||
+        (s.grade && s.grade.toLowerCase().includes(query)),
+    )
+  }, [students, modalSearchQuery])
 
   // Neglected students UI states
   const [isNeglectedExpanded, setIsNeglectedExpanded] = useState(false)
@@ -170,6 +182,7 @@ export default function CalendarPage() {
     setShowAddSession(null)
     setSessionNote('')
     setSelectedStudentIds([])
+    setModalSearchQuery('')
   }
 
   const toggleStudentSelection = (id: string) => {
@@ -579,68 +592,84 @@ export default function CalendarPage() {
           onClose={() => setShowAddSession(null)}
         >
           <div className="space-y-6">
-            <div className="relative group">
-              <BookOpen className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300 group-focus-within:text-indigo-500 transition-colors" />
+            {/* Student Search Bar */}
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
-                value={sessionNote}
-                onChange={(e) => setSessionNote(e.target.value)}
-                placeholder="Konu, ödev veya hatırlatma..."
-                className="w-full pl-14 pr-5 py-4 border-2 border-gray-100 rounded-2xl focus:ring-8 focus:ring-indigo-500/5 focus:border-indigo-500 focus:outline-none font-bold text-sm transition-all"
+                value={modalSearchQuery}
+                onChange={(e) => setModalSearchQuery(e.target.value)}
+                placeholder="Öğrenci ara (isim veya sınıf)..."
+                className="w-full pl-12 pr-5 py-4 border-2 border-gray-100 rounded-2xl focus:ring-8 focus:ring-indigo-500/5 focus:border-indigo-500 focus:outline-none font-bold text-sm transition-all"
+                autoFocus
               />
+              {modalSearchQuery && (
+                <button
+                  onClick={() => setModalSearchQuery('')}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs font-bold"
+                >
+                  Temizle
+                </button>
+              )}
             </div>
             <div className="grid grid-cols-1 gap-3 max-h-[350px] overflow-y-auto pr-3 custom-scrollbar">
-              {students.map((student) => {
-                const isSelected = selectedStudentIds.includes(student.id)
-                const count = allSessions.filter(
-                  (s) =>
-                    s.studentId === student.id && s.weekOffset === weekOffset,
-                ).length
-                return (
-                  <button
-                    key={student.id}
-                    onClick={() => toggleStudentSelection(student.id)}
-                    className={`flex items-center space-x-4 p-4 border-2 rounded-[1.25rem] transition-all text-left group ${
-                      isSelected
-                        ? 'bg-indigo-50 border-indigo-500 shadow-lg translate-x-1'
-                        : 'bg-white border-gray-100 hover:border-indigo-200'
-                    }`}
-                  >
-                    <div
-                      className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg shadow-inner transition-all ${
+              {filteredStudentsForModal.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  <p className="font-semibold">Öğrenci bulunamadı</p>
+                </div>
+              ) : (
+                filteredStudentsForModal.map((student) => {
+                  const isSelected = selectedStudentIds.includes(student.id)
+                  const count = allSessions.filter(
+                    (s) =>
+                      s.studentId === student.id && s.weekOffset === weekOffset,
+                  ).length
+                  return (
+                    <button
+                      key={student.id}
+                      onClick={() => toggleStudentSelection(student.id)}
+                      className={`flex items-center space-x-4 p-4 border-2 rounded-[1.25rem] transition-all text-left group ${
                         isSelected
-                          ? 'bg-indigo-600 text-white rotate-6'
-                          : student.color
+                          ? 'bg-indigo-50 border-indigo-500 shadow-lg translate-x-1'
+                          : 'bg-white border-gray-100 hover:border-indigo-200'
                       }`}
                     >
-                      {isSelected ? (
-                        <Check className="w-6 h-6" />
-                      ) : (
-                        student.name.charAt(0)
-                      )}
-                    </div>
-                    <div className="flex-1 overflow-hidden">
-                      <p
-                        className={`font-black text-sm truncate ${isSelected ? 'text-indigo-900' : 'text-gray-900'}`}
+                      <div
+                        className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg shadow-inner transition-all ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white rotate-6'
+                            : student.color
+                        }`}
                       >
-                        {student.name}
-                      </p>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tight">
-                        {student.grade}
-                      </p>
-                    </div>
-                    <div
-                      className={`px-3 py-1.5 rounded-xl text-[10px] font-black transition-colors shrink-0 ${
-                        isSelected
-                          ? 'bg-indigo-200 text-indigo-800'
-                          : 'bg-gray-100 text-gray-500'
-                      }`}
-                    >
-                      {count} ETÜT
-                    </div>
-                  </button>
-                )
-              })}
+                        {isSelected ? (
+                          <Check className="w-6 h-6" />
+                        ) : (
+                          student.name.charAt(0)
+                        )}
+                      </div>
+                      <div className="flex-1 overflow-hidden">
+                        <p
+                          className={`font-black text-sm truncate ${isSelected ? 'text-indigo-900' : 'text-gray-900'}`}
+                        >
+                          {student.name}
+                        </p>
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tight">
+                          {student.grade}
+                        </p>
+                      </div>
+                      <div
+                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black transition-colors shrink-0 ${
+                          isSelected
+                            ? 'bg-indigo-200 text-indigo-800'
+                            : 'bg-gray-100 text-gray-500'
+                        }`}
+                      >
+                        {count} ETÜT
+                      </div>
+                    </button>
+                  )
+                })
+              )}
             </div>
             <button
               onClick={addSelectedSessions}

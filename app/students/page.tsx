@@ -1,7 +1,16 @@
 'use client'
 
-import React, { useState, useMemo, useRef } from 'react'
-import { Users, Plus, Trash2, FileSpreadsheet, Search } from 'lucide-react'
+import React, { useState, useMemo, useRef, useEffect } from 'react'
+import {
+  Users,
+  Plus,
+  Trash2,
+  FileSpreadsheet,
+  Search,
+  Pencil,
+  Save,
+  X,
+} from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { toast } from 'react-hot-toast'
 import { STUDENT_COLORS, DAYS_OF_WEEK } from '../../constants'
@@ -38,6 +47,7 @@ export default function StudentsPage() {
   const {
     students,
     deleteStudent,
+    updateStudent,
     allSessions,
 
     addStudent: addStudentToDb,
@@ -52,9 +62,23 @@ export default function StudentsPage() {
   const [newStudentGrade, setNewStudentGrade] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Edit mode states
+  const [isEditing, setIsEditing] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editGrade, setEditGrade] = useState('')
+
   const selectedStudent = useMemo(() => {
     return students.find((s) => s.id === selectedStudentId)
   }, [students, selectedStudentId])
+
+  // Initialize edit fields when student is selected
+  useEffect(() => {
+    if (selectedStudent) {
+      setEditName(selectedStudent.name)
+      setEditGrade(selectedStudent.grade || '')
+      setIsEditing(false)
+    }
+  }, [selectedStudent])
 
   const studentSessionsInProgress = useMemo(() => {
     if (!selectedStudentId) return []
@@ -300,26 +324,110 @@ export default function StudentsPage() {
         <Modal
           title="Öğrenci Detayları"
           onClose={() => setSelectedStudentId(null)}
+          footer={
+            <div className="flex gap-3">
+              {isEditing ? (
+                <>
+                  <button
+                    onClick={() => {
+                      if (selectedStudent && editName.trim()) {
+                        updateStudent(selectedStudent.id, editName, editGrade)
+                        setIsEditing(false)
+                      }
+                    }}
+                    className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-black text-lg shadow-xl hover:bg-emerald-700 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                  >
+                    <Save className="w-5 h-5" />
+                    Kaydet
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsEditing(false)
+                      if (selectedStudent) {
+                        setEditName(selectedStudent.name)
+                        setEditGrade(selectedStudent.grade || '')
+                      }
+                    }}
+                    className="flex-1 bg-gray-100 text-gray-700 py-4 rounded-2xl font-black text-lg hover:bg-gray-200 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                  >
+                    <X className="w-5 h-5" />
+                    İptal
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="flex-1 bg-amber-50 text-amber-700 border-2 border-amber-100 py-4 rounded-2xl font-black text-lg hover:bg-amber-100 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                  >
+                    <Pencil className="w-5 h-5" />
+                    Düzenle
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (selectedStudent) {
+                        deleteStudent(selectedStudent.id)
+                        setSelectedStudentId(null)
+                      }
+                    }}
+                    className="flex-1 bg-rose-50 text-rose-600 border-2 border-rose-100 py-4 rounded-2xl font-black text-lg hover:bg-rose-100 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                    Sil
+                  </button>
+                  <button
+                    onClick={() => setSelectedStudentId(null)}
+                    className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-[0.98]"
+                  >
+                    Kapat
+                  </button>
+                </>
+              )}
+            </div>
+          }
         >
           <div className="space-y-8">
             <div className="flex items-center space-x-6 bg-indigo-50/50 p-6 rounded-[2.5rem] border border-indigo-100">
               <div
                 className={`w-20 h-20 rounded-3xl flex items-center justify-center font-black text-3xl shadow-xl ${selectedStudent.color}`}
               >
-                {selectedStudent.name.charAt(0).toUpperCase()}
+                {(isEditing ? editName : selectedStudent.name)
+                  .charAt(0)
+                  .toUpperCase()}
               </div>
-              <div>
-                <h3 className="text-2xl font-black text-gray-900">
-                  {selectedStudent.name}
-                </h3>
-                <div className="flex items-center space-x-2 mt-1">
-                  <span className="px-3 py-1 bg-white border border-indigo-100 rounded-lg text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-                    {selectedStudent.grade}
-                  </span>
-                  <span className="px-3 py-1 bg-indigo-600 rounded-lg text-[10px] font-black text-white uppercase tracking-widest">
-                    Toplam {studentSessionsInProgress.length} Etüt
-                  </span>
-                </div>
+              <div className="flex-1">
+                {isEditing ? (
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="Öğrenci adı"
+                      className="w-full px-4 py-3 border-2 border-indigo-200 rounded-xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none font-bold text-lg"
+                    />
+                    <input
+                      type="text"
+                      value={editGrade}
+                      onChange={(e) => setEditGrade(e.target.value)}
+                      placeholder="Sınıf bilgisi"
+                      className="w-full px-4 py-2 border-2 border-indigo-200 rounded-xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none font-semibold text-sm"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <h3 className="text-2xl font-black text-gray-900">
+                      {selectedStudent.name}
+                    </h3>
+                    <div className="flex items-center space-x-2 mt-1">
+                      <span className="px-3 py-1 bg-white border border-indigo-100 rounded-lg text-[10px] font-black text-indigo-600 uppercase tracking-widest">
+                        {selectedStudent.grade}
+                      </span>
+                      <span className="px-3 py-1 bg-indigo-600 rounded-lg text-[10px] font-black text-white uppercase tracking-widest">
+                        Toplam {studentSessionsInProgress.length} Etüt
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -443,13 +551,6 @@ export default function StudentsPage() {
                 </div>
               )}
             </div>
-
-            <button
-              onClick={() => setSelectedStudentId(null)}
-              className="w-full bg-indigo-600 text-white py-5 rounded-[1.5rem] font-black text-xl shadow-2xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-[0.98]"
-            >
-              Kapat
-            </button>
           </div>
         </Modal>
       )}
