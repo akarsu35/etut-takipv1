@@ -49,6 +49,7 @@ export default function StudentsPage() {
     deleteStudent,
     updateStudent,
     allSessions,
+    removeSession,
 
     addStudent: addStudentToDb,
     addManyStudents,
@@ -491,8 +492,17 @@ export default function StudentsPage() {
                   {studentSessionsInProgress.map((session) => (
                     <div
                       key={session.id}
-                      className="group flex items-center justify-between p-5 bg-white border border-gray-100 rounded-2xl hover:border-indigo-200 hover:shadow-lg transition-all"
+                      className="group flex items-center justify-between p-5 bg-white border border-gray-100 rounded-2xl hover:border-indigo-200 hover:shadow-lg transition-all relative"
                     >
+                      {/* Delete Button - Shows on Hover */}
+                      <button
+                        onClick={() => removeSession(session.id)}
+                        className="absolute top-3 right-3 p-1.5 bg-rose-50 text-rose-500 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-rose-500 hover:text-white transition-all"
+                        title="Etüdü Sil"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+
                       <div className="flex items-center space-x-4">
                         <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition-all">
                           <Clock className="w-5 h-5" />
