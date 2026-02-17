@@ -8,6 +8,7 @@ import React, {
   useMemo,
   useCallback,
 } from 'react'
+import { getCurrentAbsoluteWeek } from '@/lib/dateUtils'
 import { toast } from 'react-hot-toast'
 import { Student, Session, ArchivedWeek, Day } from '../types'
 import {
@@ -83,7 +84,7 @@ export const EtutProvider: React.FC<{ children: React.ReactNode }> = ({
   const [timeSlots, setTimeSlots] = useState<
     { id: string; label: string; order: number }[]
   >([])
-  const [weekOffset, setWeekOffset] = useState(0)
+  const [weekOffset, setWeekOffset] = useState(getCurrentAbsoluteWeek())
   const [loading, setLoading] = useState(true)
 
   const fetchData = useCallback(async () => {

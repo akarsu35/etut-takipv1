@@ -4,6 +4,7 @@ import prisma from '@/services/db'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { auth } from '@/lib/auth'
+import { getAbsoluteWeek } from '@/lib/dateUtils'
 
 async function getUserId() {
   try {
@@ -37,6 +38,57 @@ export async function getInitialData() {
     const sessions = await prisma.etutSession.findMany({
       where: { userId },
     })
+
+    // --- MIGRATION & RECOVERY LOGIC ---
+    const WEEKS_BETWEEN_1970_2024 = 2817
+
+    // Recovery constants
+    const FUTURE_CORRUPTION_THRESHOLD = 3500
+    const CORRUPTION_SHIFT = 984 // 3912 -> 2928
+
+    const migratedSessions = await Promise.all(
+      sessions.map(async (s) => {
+        let newAbsoluteOffset = 0
+
+        // Case 1: RECOVERY (Fix data shifted 19 years into future)
+        if (s.weekOffset > FUTURE_CORRUPTION_THRESHOLD) {
+          newAbsoluteOffset = s.weekOffset - CORRUPTION_SHIFT
+          console.log(
+            `[RECOVERY] Fixing session ${s.id}: ${s.weekOffset} -> ${newAbsoluteOffset}`,
+          )
+
+          await prisma.etutSession.update({
+            where: { id: s.id },
+            data: { weekOffset: newAbsoluteOffset },
+          })
+          return { ...s, weekOffset: newAbsoluteOffset }
+        }
+
+        // Case 2: Already correct (1970-based, ~2900 range)
+        if (s.weekOffset > 2000) {
+          return s
+        }
+
+        // Case 3: 2024-Absolute (Buggy migration artifacts, 20-100 range)
+        if (s.weekOffset > 20) {
+          newAbsoluteOffset = s.weekOffset + WEEKS_BETWEEN_1970_2024
+        }
+        // Case 4: Relative (Legacy data, 0, 1 range)
+        else {
+          const absWeekOfCreation = getAbsoluteWeek(s.createdAt)
+          newAbsoluteOffset = absWeekOfCreation + s.weekOffset
+        }
+
+        // DB Update for Cases 3 & 4
+        await prisma.etutSession.update({
+          where: { id: s.id },
+          data: { weekOffset: newAbsoluteOffset },
+        })
+
+        return { ...s, weekOffset: newAbsoluteOffset }
+      }),
+    )
+    // ---------------------------------------------
     const archives = await prisma.archivedWeek.findMany({
       where: { userId },
       include: { sessions: true },
@@ -54,7 +106,7 @@ export async function getInitialData() {
 
     return {
       students: JSON.parse(JSON.stringify(students)),
-      sessions: JSON.parse(JSON.stringify(sessions)),
+      sessions: JSON.parse(JSON.stringify(migratedSessions)),
       archives: JSON.parse(JSON.stringify(archives)),
       programDays: JSON.parse(JSON.stringify(days)),
       timeSlots: JSON.parse(JSON.stringify(slots)),

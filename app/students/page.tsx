@@ -22,6 +22,7 @@ import {
   Clock,
   BookOpen,
   ChevronRight,
+  ChevronDown,
   UserCheck,
   UserX,
   Minus,
@@ -59,6 +60,7 @@ export default function StudentsPage() {
     null,
   )
   const [searchQuery, setSearchQuery] = useState('')
+  const [expandedGrades, setExpandedGrades] = useState<string[]>([])
   const [newStudentName, setNewStudentName] = useState('')
   const [newStudentGrade, setNewStudentGrade] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -89,13 +91,14 @@ export default function StudentsPage() {
   }, [allSessions, selectedStudentId])
 
   const getSessionDate = (session: Session) => {
-    const monday = new Date()
+    // Basic Epoch: 1969-12-29 (Same as in dateUtils)
+    const epoch = new Date('1969-12-29T00:00:00.000Z')
+    const monday = new Date(epoch)
     monday.setDate(monday.getDate() + session.weekOffset * 7)
 
-    const currentMonday = getMonday(monday)
     const dayIndex = DAYS_OF_WEEK.indexOf(session.day)
 
-    const sessionDate = new Date(currentMonday)
+    const sessionDate = new Date(monday)
     sessionDate.setDate(sessionDate.getDate() + dayIndex)
 
     return formatDate(sessionDate)
@@ -144,6 +147,45 @@ export default function StudentsPage() {
         s.grade.toLowerCase().includes(query),
     )
   }, [students, searchQuery])
+
+  // Group students by grade
+  const groupedStudents = useMemo(() => {
+    const groups: Record<string, typeof filteredStudents> = {}
+    filteredStudents.forEach((student) => {
+      const grade = student.grade || 'Diğer'
+      if (!groups[grade]) {
+        groups[grade] = []
+      }
+      groups[grade].push(student)
+    })
+
+    // Sort grades alphanumerically
+    const sortedGrades = Object.keys(groups).sort((a, b) =>
+      a.localeCompare(b, 'tr', { numeric: true }),
+    )
+
+    return sortedGrades.map((grade) => ({
+      grade,
+      students: groups[grade],
+    }))
+  }, [filteredStudents])
+
+  // Toggle grade accordion
+  const toggleGrade = (grade: string) => {
+    setExpandedGrades((prev) =>
+      prev.includes(grade) ? prev.filter((g) => g !== grade) : [...prev, grade],
+    )
+  }
+
+  // Auto-expand when searching
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      setExpandedGrades(groupedStudents.map((g) => g.grade))
+    } else {
+      // Optionally collapse all when search is cleared
+      setExpandedGrades([])
+    }
+  }, [searchQuery, groupedStudents])
 
   const addStudent = async () => {
     if (!newStudentName) return
@@ -232,9 +274,9 @@ export default function StudentsPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      <div className="space-y-12">
         {students.length === 0 ? (
-          <div className="col-span-full py-32 text-center bg-white rounded-[2rem] border-4 border-dashed border-gray-100 flex flex-col items-center">
+          <div className="py-32 text-center bg-white rounded-[2rem] border-4 border-dashed border-gray-100 flex flex-col items-center">
             <div className="bg-indigo-50 p-8 rounded-full mb-6">
               <Users className="w-16 h-16 text-indigo-300" />
             </div>
@@ -246,7 +288,7 @@ export default function StudentsPage() {
             </p>
           </div>
         ) : filteredStudents.length === 0 ? (
-          <div className="col-span-full py-24 text-center bg-white rounded-[2rem] border-2 border-dashed border-gray-100 flex flex-col items-center">
+          <div className="py-24 text-center bg-white rounded-[2rem] border-2 border-dashed border-gray-100 flex flex-col items-center">
             <div className="bg-gray-50 p-6 rounded-full mb-4">
               <Search className="w-10 h-10 text-gray-300" />
             </div>
@@ -264,60 +306,102 @@ export default function StudentsPage() {
             </button>
           </div>
         ) : (
-          filteredStudents.map((student) => (
-            <div
-              key={student.id}
-              onClick={() => setSelectedStudentId(student.id)}
-              className="bg-white rounded-[1.5rem] border border-gray-100 p-6 shadow-sm hover:shadow-2xl transition-all relative group overflow-hidden hover:-translate-y-1 cursor-pointer"
-            >
-              <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    deleteStudent(student.id)
-                  }}
-                  className="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="flex items-center space-x-5">
+          groupedStudents.map(({ grade, students: groupStudents }) => {
+            const isExpanded = expandedGrades.includes(grade)
+            return (
+              <div
+                key={grade}
+                className="bg-white border border-gray-100 rounded-[2rem] overflow-hidden transition-all duration-300 shadow-sm hover:shadow-md"
+              >
+                {/* Accordion Header */}
                 <div
-                  className={`w-16 h-16 rounded-[1.25rem] flex items-center justify-center font-black text-2xl shrink-0 shadow-inner group-hover:rotate-3 transition-transform ${student.color}`}
+                  onClick={() => toggleGrade(grade)}
+                  className="p-6 flex items-center justify-between cursor-pointer bg-gray-50/30 hover:bg-gray-50 transition-colors group select-none"
                 >
-                  {student.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-black text-gray-900 truncate text-xl leading-tight">
-                    {student.name}
-                  </h3>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-[10px] font-black text-gray-400 bg-gray-100 px-3 py-1 rounded-lg uppercase tracking-widest">
-                      {student.grade}
-                    </span>
-                    <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg">
-                      {studentStats[student.id] || 0} Etüt
-                    </span>
+                  <div className="flex items-center gap-4">
+                    <div className="bg-indigo-600 text-white px-5 py-2 rounded-xl font-black text-sm shadow-lg shadow-indigo-200 uppercase tracking-wider group-hover:bg-indigo-700 transition-colors">
+                      {grade}
+                    </div>
+                    <div className="text-gray-400 font-bold text-xs uppercase tracking-widest bg-white border border-gray-100 px-3 py-1.5 rounded-lg group-hover:border-indigo-100 group-hover:text-indigo-400 transition-colors">
+                      {groupStudents.length} Öğrenci
+                    </div>
                   </div>
-                  {/* Attendance Stats - Separate Row */}
-                  {attendanceStats[student.id] &&
-                    (attendanceStats[student.id].attended > 0 ||
-                      attendanceStats[student.id].absent > 0) && (
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg flex items-center gap-1">
-                          <UserCheck className="w-3 h-3" />
-                          {attendanceStats[student.id].attended} Katıldı
-                        </span>
-                        <span className="text-[10px] font-black text-rose-600 bg-rose-50 px-3 py-1.5 rounded-lg flex items-center gap-1">
-                          <UserX className="w-3 h-3" />
-                          {attendanceStats[student.id].absent} Gelmedi
-                        </span>
+                  <div
+                    className={`p-2 rounded-full bg-white border border-gray-100 text-gray-400 group-hover:text-indigo-500 group-hover:border-indigo-100 transition-all duration-300 ${
+                      isExpanded
+                        ? 'rotate-180 bg-indigo-50 border-indigo-200 text-indigo-600'
+                        : ''
+                    }`}
+                  >
+                    <ChevronDown className="w-5 h-5" />
+                  </div>
+                </div>
+
+                {/* Accordion Body */}
+                <div
+                  className={`transition-all duration-500 ease-in-out overflow-hidden ${
+                    isExpanded
+                      ? 'max-h-[5000px] opacity-100'
+                      : 'max-h-0 opacity-0'
+                  }`}
+                >
+                  <div className="p-8 pt-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 border-t border-gray-50">
+                    {groupStudents.map((student) => (
+                      <div
+                        key={student.id}
+                        onClick={() => setSelectedStudentId(student.id)}
+                        className="bg-white rounded-[1.5rem] border border-gray-100 p-6 shadow-sm hover:shadow-xl hover:border-indigo-100 transition-all relative group overflow-hidden hover:-translate-y-1 cursor-pointer"
+                      >
+                        <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              deleteStudent(student.id)
+                            }}
+                            className="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                        <div className="flex items-center space-x-5">
+                          <div
+                            className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl shrink-0 shadow-inner group-hover:rotate-6 transition-transform ${student.color}`}
+                          >
+                            {student.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-black text-gray-900 truncate text-lg leading-tight group-hover:text-indigo-600 transition-colors">
+                              {student.name}
+                            </h3>
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                              <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">
+                                {studentStats[student.id] || 0} Toplam
+                              </span>
+                              {/* Attendance Stats - Using compact view */}
+                              {attendanceStats[student.id] &&
+                                (attendanceStats[student.id].attended > 0 ||
+                                  attendanceStats[student.id].absent > 0) && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md flex items-center gap-1">
+                                      <UserCheck className="w-3 h-3" />
+                                      {attendanceStats[student.id].attended}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-1 rounded-md flex items-center gap-1">
+                                      <UserX className="w-3 h-3" />
+                                      {attendanceStats[student.id].absent}
+                                    </span>
+                                  </div>
+                                )}
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    )}
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
 

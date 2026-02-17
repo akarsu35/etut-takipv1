@@ -31,12 +31,7 @@ import { Header } from '@/components/Header'
 import { useEtut } from '@/context/EtutContext'
 
 // --- Helpers ---
-const getMonday = (date: Date) => {
-  const d = new Date(date)
-  const day = d.getDay()
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1)
-  return new Date(d.setDate(diff))
-}
+import { getMonday, getCurrentAbsoluteWeek } from '@/lib/dateUtils'
 
 const formatDate = (date: Date | undefined) => {
   if (!date) return '-'
@@ -79,46 +74,104 @@ export default function CalendarPage() {
   const [sessionNote, setSessionNote] = useState('')
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([])
   const [modalSearchQuery, setModalSearchQuery] = useState('')
+  const [hideScheduled, setHideScheduled] = useState(true) // Default to true filter out scheduled students
 
-  // Filtered students for modal search
-  const filteredStudentsForModal = useMemo(() => {
-    if (!modalSearchQuery.trim()) return students
-    const query = modalSearchQuery.toLowerCase()
-    return students.filter(
-      (s) =>
-        s.name.toLowerCase().includes(query) ||
-        (s.grade && s.grade.toLowerCase().includes(query)),
-    )
-  }, [students, modalSearchQuery])
+  const currentWeekSessions = useMemo(() => {
+    return allSessions.filter((s) => s.weekOffset === weekOffset)
+  }, [allSessions, weekOffset])
 
-  // Group modal students by grade for better organization
-  const groupedStudentsForModal = useMemo(() => {
-    const groups: Record<string, typeof filteredStudentsForModal> = {}
-    filteredStudentsForModal.forEach((s) => {
-      const grade = s.grade || 'Diğer'
-      if (!groups[grade]) groups[grade] = []
-      groups[grade].push(s)
-    })
-    // Sort students alphabetically within each group
-    Object.keys(groups).forEach((grade) => {
-      groups[grade].sort((a, b) => a.name.localeCompare(b.name, 'tr'))
-    })
-    // Sort grades alphabetically
-    const sortedGrades = Object.keys(groups).sort((a, b) =>
-      a.localeCompare(b, 'tr'),
+  // --- Advanced Student Filtering & Grouping for Modal ---
+  const modalStudentGroups = useMemo(() => {
+    // 1. Identification of "Last Week" students
+    const lastWeekSessions = allSessions.filter(
+      (s) => s.weekOffset === weekOffset - 1,
     )
-    return sortedGrades.map((grade) => ({ grade, students: groups[grade] }))
-  }, [filteredStudentsForModal])
+    const lastWeekStudentIds = new Set(lastWeekSessions.map((s) => s.studentId))
+
+    // 2. Scheduled check
+    const currentWeekStudentIds = new Set(
+      currentWeekSessions.map((s) => s.studentId),
+    )
+
+    // Helper: Group by grade
+    const groupByGrade = (studentList: Student[]) => {
+      const groups: Record<string, Student[]> = {}
+      studentList.forEach((s) => {
+        const grade = s.grade || 'Diğer'
+        if (!groups[grade]) groups[grade] = []
+        groups[grade].push(s)
+      })
+      // Sort students
+      Object.keys(groups).forEach((grade) => {
+        groups[grade].sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+      })
+      // Sort grades
+      return Object.keys(groups)
+        .sort((a, b) => a.localeCompare(b, 'tr'))
+        .map((grade) => ({ grade, students: groups[grade] }))
+    }
+
+    // 3. Filtering
+    let eligibleStudents = students
+    if (modalSearchQuery.trim()) {
+      const q = modalSearchQuery.toLowerCase()
+      eligibleStudents = students.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          (s.grade && s.grade.toLowerCase().includes(q)),
+      )
+    }
+
+    const remainingFromLastWeek: Student[] = []
+    const newWeekStudents: Student[] = []
+
+    eligibleStudents.forEach((student) => {
+      // If hiding scheduled and student has a session this week, skip
+      if (hideScheduled && currentWeekStudentIds.has(student.id)) {
+        return
+      }
+
+      if (lastWeekStudentIds.has(student.id)) {
+        remainingFromLastWeek.push(student)
+      } else {
+        newWeekStudents.push(student)
+      }
+    })
+
+    return {
+      remaining: groupByGrade(remainingFromLastWeek),
+      newWeek: groupByGrade(newWeekStudents),
+      totalRemaining: remainingFromLastWeek.length,
+      totalNew: newWeekStudents.length,
+    }
+  }, [
+    students,
+    allSessions,
+    weekOffset,
+    modalSearchQuery,
+    hideScheduled,
+    currentWeekSessions,
+  ])
 
   // Neglected students UI states
   const [isNeglectedExpanded, setIsNeglectedExpanded] = useState(false)
   const [neglectedSearchQuery, setNeglectedSearchQuery] = useState('')
 
+  // New Week students UI states
+  const [isNewWeekExpanded, setIsNewWeekExpanded] = useState(false)
+  const [newWeekSearchQuery, setNewWeekSearchQuery] = useState('')
+  const [showScheduledOnDashboard, setShowScheduledOnDashboard] =
+    useState(false)
+
   // Date Calculation
   const currentMonday = useMemo(() => {
+    const currentAbs = getCurrentAbsoluteWeek()
+    const relativeOffset = weekOffset - currentAbs
+
     const today = new Date()
-    today.setDate(today.getDate() + weekOffset * 7)
-    return getMonday(today)
+    const monday = getMonday(today)
+    monday.setDate(monday.getDate() + relativeOffset * 7)
+    return monday
   }, [weekOffset])
 
   const weekDates = useMemo(() => {
@@ -133,10 +186,6 @@ export default function CalendarPage() {
     if (!mounted || weekDates.length === 0) return 'Yükleniyor...'
     return `${formatDate(weekDates[0])} - ${formatDate(weekDates[weekDates.length - 1])}`
   }, [weekDates, mounted])
-
-  const currentWeekSessions = useMemo(() => {
-    return allSessions.filter((s) => s.weekOffset === weekOffset)
-  }, [allSessions, weekOffset])
 
   // --- Neglected Logic ---
   const neglectedFromLastWeek = useMemo(() => {
@@ -155,10 +204,45 @@ export default function CalendarPage() {
   }, [students, allSessions, weekOffset])
 
   const currentlyNeglected = useMemo(() => {
+    // If showing scheduled, we consider everyone "neglected" in the sense that they can be added again.
+    // However, we still want to separate them from the "Left from Last Week" list.
+    if (showScheduledOnDashboard) {
+      return students
+    }
     return students.filter(
       (s) => !currentWeekSessions.some((sess) => sess.studentId === s.id),
     )
-  }, [students, currentWeekSessions])
+  }, [students, currentWeekSessions, showScheduledOnDashboard])
+
+  // --- New Week Logic (Dashboard) ---
+  const newWeekStudentsDashboard = useMemo(() => {
+    return currentlyNeglected.filter(
+      (s) => !neglectedFromLastWeek.some((n) => n.id === s.id),
+    )
+  }, [currentlyNeglected, neglectedFromLastWeek])
+
+  const filteredNewWeekStudents = useMemo(() => {
+    if (!newWeekSearchQuery.trim()) return newWeekStudentsDashboard
+    return newWeekStudentsDashboard.filter((s) =>
+      s.name.toLowerCase().includes(newWeekSearchQuery.toLowerCase()),
+    )
+  }, [newWeekStudentsDashboard, newWeekSearchQuery])
+
+  const groupedNewWeekByGrade = useMemo(() => {
+    const groups: Record<string, typeof filteredNewWeekStudents> = {}
+    filteredNewWeekStudents.forEach((s) => {
+      const grade = s.grade || 'Diğer'
+      if (!groups[grade]) groups[grade] = []
+      groups[grade].push(s)
+    })
+    Object.keys(groups).forEach((grade) => {
+      groups[grade].sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+    })
+    const sortedGrades = Object.keys(groups).sort((a, b) =>
+      a.localeCompare(b, 'tr'),
+    )
+    return sortedGrades.map((grade) => ({ grade, students: groups[grade] }))
+  }, [filteredNewWeekStudents])
 
   // Filtered neglected students based on search
   const filteredNeglectedStudents = useMemo(() => {
@@ -469,6 +553,175 @@ export default function CalendarPage() {
           </div>
         )}
 
+      {/* New Week To Plan Alert - Indigo Theme */}
+      {newWeekStudentsDashboard.length > 0 &&
+        students.length > 0 &&
+        weekOffset >= 0 && (
+          <div className="bg-gradient-to-br from-indigo-50 via-indigo-50/50 to-blue-50/30 border border-indigo-200 rounded-2xl overflow-hidden shadow-lg shadow-indigo-100/50">
+            {/* Header */}
+            <div
+              className="p-5 flex items-center justify-between cursor-pointer hover:bg-indigo-100/30 transition-all"
+              onClick={() => setIsNewWeekExpanded(!isNewWeekExpanded)}
+            >
+              <div className="flex items-center space-x-4">
+                <div className="bg-gradient-to-br from-indigo-600 to-indigo-700 p-3 rounded-xl shrink-0 shadow-lg shadow-indigo-300/50">
+                  <Sparkles className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h4 className="text-indigo-900 font-black text-base flex items-center gap-2">
+                    Yeni Hafta Listesi
+                    <span className="bg-indigo-600 text-white text-xs px-2.5 py-1 rounded-full font-black shadow-sm">
+                      {newWeekStudentsDashboard.length}
+                    </span>
+                  </h4>
+                  <p className="text-indigo-600 text-xs font-medium mt-0.5">
+                    {isNewWeekExpanded
+                      ? 'Listeyi gizle'
+                      : 'Henüz planlanmamış diğer öğrenciler'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="hidden sm:block text-[10px] font-bold text-indigo-500 bg-white px-3 py-1.5 rounded-full border border-indigo-200">
+                  Sürükle & Bırak
+                </span>
+                <ChevronDown
+                  className={`w-5 h-5 text-indigo-600 transition-transform duration-300 ${isNewWeekExpanded ? 'rotate-180' : ''}`}
+                />
+              </div>
+            </div>
+
+            {/* Expandable Content */}
+            <div
+              className={`overflow-hidden transition-all duration-300 ${
+                isNewWeekExpanded
+                  ? 'max-h-[600px] opacity-100'
+                  : 'max-h-0 opacity-0'
+              }`}
+            >
+              <div className="px-5 pb-5 space-y-4">
+                {/* Search Bar */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-400" />
+                    <input
+                      type="text"
+                      value={newWeekSearchQuery}
+                      onChange={(e) => setNewWeekSearchQuery(e.target.value)}
+                      placeholder="Öğrenci ara..."
+                      className="w-full pl-11 pr-4 py-3 bg-white border-2 border-indigo-200 rounded-xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:outline-none font-semibold text-sm text-gray-700 placeholder:text-indigo-300 transition-all"
+                    />
+                    {newWeekSearchQuery && (
+                      <button
+                        onClick={() => setNewWeekSearchQuery('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-indigo-400 hover:text-indigo-600 text-xs font-bold"
+                      >
+                        Temizle
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() =>
+                      setShowScheduledOnDashboard(!showScheduledOnDashboard)
+                    }
+                    className={`px-4 py-3 rounded-xl border-2 font-bold text-xs transition-all whitespace-nowrap flex items-center gap-2 ${
+                      showScheduledOnDashboard
+                        ? 'bg-indigo-100 border-indigo-300 text-indigo-700'
+                        : 'bg-white border-indigo-200 text-gray-400 hover:border-indigo-300'
+                    }`}
+                  >
+                    {showScheduledOnDashboard ? (
+                      <Check className="w-4 h-4" />
+                    ) : (
+                      <div className="w-4 h-4 border-2 border-indigo-200 rounded-md" />
+                    )}
+                    Eklenmişleri Göster
+                  </button>
+                </div>
+
+                {/* Students Grid */}
+                <div className="max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                  {filteredNewWeekStudents.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {groupedNewWeekByGrade.map(
+                        ({ grade, students: gradeStudents }) => (
+                          <div
+                            key={grade}
+                            className="bg-white/50 rounded-xl p-3 border border-indigo-100"
+                          >
+                            {/* Class Header */}
+                            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-indigo-200">
+                              <span className="bg-indigo-600 text-white text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-wide">
+                                {grade}
+                              </span>
+                              <span className="text-[10px] font-bold text-indigo-500">
+                                {gradeStudents.length} öğrenci
+                              </span>
+                            </div>
+                            {/* Students List */}
+                            <div className="space-y-2">
+                              {gradeStudents.map((s) => (
+                                <div
+                                  key={s.id}
+                                  draggable
+                                  onDragStart={(e) => handleDragStart(e, s.id)}
+                                  onDragEnd={handleDragEnd}
+                                  className="group relative bg-white border border-indigo-200 rounded-lg p-2.5 shadow-sm hover:shadow-md hover:scale-[1.02] hover:border-indigo-400 transition-all cursor-grab active:cursor-grabbing active:scale-95"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <div
+                                      className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs shadow-inner ${s.color || 'bg-indigo-100 text-indigo-600'} group-hover:scale-110 transition-transform`}
+                                    >
+                                      {s.name.charAt(0)}
+                                    </div>
+                                    <p className="font-bold text-sm text-gray-900 truncate flex-1">
+                                      {s.name}
+                                    </p>
+                                    <GripVertical className="w-3.5 h-3.5 text-indigo-300 group-hover:text-indigo-500 transition-colors shrink-0" />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-indigo-400 text-sm font-semibold">
+                        {newWeekSearchQuery
+                          ? `"${newWeekSearchQuery}" için sonuç bulunamadı`
+                          : 'Öğrenci bulunamadı'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer Stats */}
+                {filteredNewWeekStudents.length > 0 && (
+                  <div className="flex items-center justify-between pt-3 border-t border-indigo-200">
+                    <p className="text-xs font-semibold text-indigo-600">
+                      {newWeekSearchQuery
+                        ? `${filteredNewWeekStudents.length} / ${newWeekStudentsDashboard.length} öğrenci gösteriliyor`
+                        : `Toplam ${newWeekStudentsDashboard.length} öğrenci`}
+                    </p>
+                    <button
+                      onClick={() => {
+                        setIsNewWeekExpanded(false)
+                        setNewWeekSearchQuery('')
+                      }}
+                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 underline transition-colors"
+                    >
+                      Kapat
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
       {/* Calendar Grid */}
       <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm bg-white">
         <table className="min-w-full divide-y divide-gray-200">
@@ -631,86 +884,202 @@ export default function CalendarPage() {
                 </button>
               )}
             </div>
-            <div className="space-y-4 max-h-[350px] overflow-y-auto pr-3 custom-scrollbar">
-              {filteredStudentsForModal.length === 0 ? (
-                <div className="text-center py-8 text-gray-400">
-                  <p className="font-semibold">Öğrenci bulunamadı</p>
+
+            {/* Filter Options */}
+            <div className="flex items-center space-x-2 px-1">
+              <label className="flex items-center space-x-2 cursor-pointer group">
+                <div
+                  className={`w-10 h-6 flex items-center bg-gray-200 rounded-full p-1 duration-300 ease-in-out ${hideScheduled ? 'bg-indigo-500' : ''}`}
+                  onClick={() => setHideScheduled(!hideScheduled)}
+                >
+                  <div
+                    className={`bg-white w-4 h-4 rounded-full shadow-md transform duration-300 ease-in-out ${hideScheduled ? 'translate-x-4' : ''}`}
+                  ></div>
+                </div>
+                <span className="text-xs font-bold text-gray-500 group-hover:text-gray-700 select-none">
+                  Bu hafta eklenenleri gizle
+                </span>
+              </label>
+            </div>
+
+            <div className="space-y-6 max-h-[400px] overflow-y-auto pr-3 custom-scrollbar">
+              {modalStudentGroups.totalRemaining === 0 &&
+              modalStudentGroups.totalNew === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <p className="font-semibold">
+                    {hideScheduled
+                      ? 'Görüntülenecek öğrenci yok (Tümü eklenmiş olabilir)'
+                      : 'Öğrenci bulunamadı'}
+                  </p>
                 </div>
               ) : (
-                groupedStudentsForModal.map(
-                  ({ grade, students: gradeStudents }) => (
-                    <div key={grade} className="space-y-3">
-                      {/* Grade Header */}
-                      <div className="flex items-center gap-2 px-2">
-                        <span className="bg-indigo-600 text-white text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-wide">
-                          {grade}
+                <>
+                  {/* Last Week Remaining Section */}
+                  {modalStudentGroups.totalRemaining > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 pb-2 border-b border-rose-100">
+                        <span className="bg-rose-100 text-rose-700 text-xs font-black px-3 py-1.5 rounded-lg uppercase tracking-wide">
+                          Geçen Haftadan Kalanlar
                         </span>
-                        <span className="text-[10px] font-bold text-indigo-500">
-                          {gradeStudents.length} öğrenci
+                        <span className="text-xs font-bold text-rose-400">
+                          {modalStudentGroups.totalRemaining} öğrenci
                         </span>
-                        <div className="flex-1 h-px bg-gradient-to-r from-indigo-200 to-transparent"></div>
                       </div>
-
-                      {/* Students in this grade */}
-                      <div className="grid grid-cols-1 gap-3">
-                        {gradeStudents.map((student) => {
-                          const isSelected = selectedStudentIds.includes(
-                            student.id,
-                          )
-                          const count = allSessions.filter(
-                            (s) =>
-                              s.studentId === student.id &&
-                              s.weekOffset === weekOffset,
-                          ).length
-                          return (
-                            <button
-                              key={student.id}
-                              onClick={() => toggleStudentSelection(student.id)}
-                              className={`flex items-center space-x-4 p-4 border-2 rounded-[1.25rem] transition-all text-left group ${
-                                isSelected
-                                  ? 'bg-indigo-50 border-indigo-500 shadow-lg translate-x-1'
-                                  : 'bg-white border-gray-100 hover:border-indigo-200'
-                              }`}
-                            >
-                              <div
-                                className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg shadow-inner transition-all ${
-                                  isSelected
-                                    ? 'bg-indigo-600 text-white rotate-6'
-                                    : student.color
-                                }`}
-                              >
-                                {isSelected ? (
-                                  <Check className="w-6 h-6" />
-                                ) : (
-                                  student.name.charAt(0)
-                                )}
+                      <div className="space-y-4 pl-2 border-l-2 border-rose-100/50">
+                        {modalStudentGroups.remaining.map(
+                          ({ grade, students: gradeStudents }) => (
+                            <div key={grade} className="space-y-2">
+                              {/* Grade Header */}
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-black text-rose-300 uppercase tracking-wider">
+                                  {grade}
+                                </span>
+                                <div className="flex-1 h-px bg-rose-50"></div>
                               </div>
-                              <div className="flex-1 overflow-hidden">
-                                <p
-                                  className={`font-black text-sm truncate ${isSelected ? 'text-indigo-900' : 'text-gray-900'}`}
-                                >
-                                  {student.name}
-                                </p>
-                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tight">
-                                  {student.grade}
-                                </p>
+                              {/* Students */}
+                              <div className="grid grid-cols-1 gap-2">
+                                {gradeStudents.map((student) => {
+                                  const isSelected =
+                                    selectedStudentIds.includes(student.id)
+                                  const count = allSessions.filter(
+                                    (s) =>
+                                      s.studentId === student.id &&
+                                      s.weekOffset === weekOffset,
+                                  ).length
+                                  return (
+                                    <button
+                                      key={student.id}
+                                      onClick={() =>
+                                        toggleStudentSelection(student.id)
+                                      }
+                                      className={`flex items-center space-x-3 p-3 border rounded-xl transition-all text-left group ${
+                                        isSelected
+                                          ? 'bg-rose-50 border-rose-400 shadow-md transform scale-[1.01]'
+                                          : 'bg-white border-gray-100 hover:border-rose-200'
+                                      }`}
+                                    >
+                                      <div
+                                        className={`w-10 h-10 rounded-lg flex items-center justify-center font-black text-base shadow-inner transition-all ${
+                                          isSelected
+                                            ? 'bg-rose-500 text-white'
+                                            : student.color
+                                        }`}
+                                      >
+                                        {isSelected ? (
+                                          <Check className="w-5 h-5" />
+                                        ) : (
+                                          student.name.charAt(0)
+                                        )}
+                                      </div>
+                                      <div className="flex-1 overflow-hidden">
+                                        <p
+                                          className={`font-black text-xs truncate ${isSelected ? 'text-rose-900' : 'text-gray-900'}`}
+                                        >
+                                          {student.name}
+                                        </p>
+                                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-tight">
+                                          {student.grade}
+                                        </p>
+                                      </div>
+                                      {count > 0 && (
+                                        <div className="px-2 py-1 rounded-lg text-[9px] font-black bg-gray-100 text-gray-400">
+                                          {count} ETÜT
+                                        </div>
+                                      )}
+                                    </button>
+                                  )
+                                })}
                               </div>
-                              <div
-                                className={`px-3 py-1.5 rounded-xl text-[10px] font-black transition-colors shrink-0 ${
-                                  isSelected
-                                    ? 'bg-indigo-200 text-indigo-800'
-                                    : 'bg-gray-100 text-gray-500'
-                                }`}
-                              >
-                                {count} ETÜT
-                              </div>
-                            </button>
-                          )
-                        })}
+                            </div>
+                          ),
+                        )}
                       </div>
                     </div>
-                  ),
-                )
+                  )}
+
+                  {/* New Week Section */}
+                  {modalStudentGroups.totalNew > 0 && (
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-center gap-2 pb-2 border-b border-indigo-100">
+                        <span className="bg-indigo-100 text-indigo-700 text-xs font-black px-3 py-1.5 rounded-lg uppercase tracking-wide">
+                          Yeni Hafta Listesi
+                        </span>
+                        <span className="text-xs font-bold text-indigo-400">
+                          {modalStudentGroups.totalNew} öğrenci
+                        </span>
+                      </div>
+                      <div className="space-y-4 pl-2 border-l-2 border-indigo-100/50">
+                        {modalStudentGroups.newWeek.map(
+                          ({ grade, students: gradeStudents }) => (
+                            <div key={grade} className="space-y-2">
+                              {/* Grade Header */}
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-black text-indigo-300 uppercase tracking-wider">
+                                  {grade}
+                                </span>
+                                <div className="flex-1 h-px bg-indigo-50"></div>
+                              </div>
+                              {/* Students */}
+                              <div className="grid grid-cols-1 gap-2">
+                                {gradeStudents.map((student) => {
+                                  const isSelected =
+                                    selectedStudentIds.includes(student.id)
+                                  const count = allSessions.filter(
+                                    (s) =>
+                                      s.studentId === student.id &&
+                                      s.weekOffset === weekOffset,
+                                  ).length
+                                  return (
+                                    <button
+                                      key={student.id}
+                                      onClick={() =>
+                                        toggleStudentSelection(student.id)
+                                      }
+                                      className={`flex items-center space-x-3 p-3 border rounded-xl transition-all text-left group ${
+                                        isSelected
+                                          ? 'bg-indigo-50 border-indigo-500 shadow-md transform scale-[1.01]'
+                                          : 'bg-white border-gray-100 hover:border-indigo-200'
+                                      }`}
+                                    >
+                                      <div
+                                        className={`w-10 h-10 rounded-lg flex items-center justify-center font-black text-base shadow-inner transition-all ${
+                                          isSelected
+                                            ? 'bg-indigo-600 text-white'
+                                            : student.color
+                                        }`}
+                                      >
+                                        {isSelected ? (
+                                          <Check className="w-5 h-5" />
+                                        ) : (
+                                          student.name.charAt(0)
+                                        )}
+                                      </div>
+                                      <div className="flex-1 overflow-hidden">
+                                        <p
+                                          className={`font-black text-xs truncate ${isSelected ? 'text-indigo-900' : 'text-gray-900'}`}
+                                        >
+                                          {student.name}
+                                        </p>
+                                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-tight">
+                                          {student.grade}
+                                        </p>
+                                      </div>
+                                      {count > 0 && (
+                                        <div className="px-2 py-1 rounded-lg text-[9px] font-black bg-gray-100 text-gray-400">
+                                          {count} ETÜT
+                                        </div>
+                                      )}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          ),
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
             <button
